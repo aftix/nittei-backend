@@ -7,3 +7,10 @@ edition = "2021"
 
 [dependencies]
 nittei-common={version="0.1", git="https://github.com/aftix/nittei-common"}
+bcrypt = "0.10"
+rocket = "0.4"
+postgres = "0.19"
+toml = "0.5"
+ron="0.7"
+passwords="3.1"
+totp-lite="1.0"

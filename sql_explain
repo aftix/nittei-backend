@@ -1,0 +1,11 @@
+Users is the main table containing users
+    - donator = bool if user is a donator
+    - verified = bool if user email has been verified
+
+Tokens is the table containing auth keys
+    - uid = user id for auth code
+    - tokenhash = bcrypt password hash of token
+
+Friends is the table of friend connections
+    - Each friend connection has two entries, with the uids relatively swapped
+    - only 1 entry = friend request
