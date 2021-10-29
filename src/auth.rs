@@ -1,6 +1,6 @@
 use crate::sql::*;
-use crate::util::Ron;
-use crate::{SessionSecret, PSQL};
+use crate::util::{Ron, SourceIP};
+use crate::{RateLimit, RateLimiter, SessionSecret, PSQL};
 use argon2::{verify_encoded, Config};
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
@@ -14,9 +14,39 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub async fn register(
     secret: &State<SessionSecret>,
     conn: PSQL,
+    ip: &SourceIP,
+    limiter: &State<RateLimiter>,
     req: RegisterRequest,
 ) -> Ron<RegisterResponse> {
     use crate::schema::users::dsl::*;
+
+    // Rate limit
+    let limit = {
+        let guard = limiter.inner().map.lock().unwrap();
+        let ip = ip.0;
+        let get = guard.get(&ip);
+        if let Some(timeout) = get {
+            timeout.clone()
+        } else {
+            RateLimit {
+                lastattempt: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("Time moved backwards")
+                    .as_millis(),
+                timeout: 0,
+                attempts: 0,
+            }
+        }
+    };
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time moved backwards")
+        .as_millis();
+    let elapsed = now - limit.lastattempt;
+    if elapsed < limit.timeout as u128 {
+        return Ron::new(RegisterResponse::Lockout);
+    }
 
     // Check user availability
     let name = req.username.clone();
@@ -24,18 +54,41 @@ pub async fn register(
         .run(|c| users.filter(username.eq(name)).load::<User>(c))
         .await;
 
+    // Insert the updated rate limit into the hashmap
+    let update_limit = |mut limit: RateLimit, ip: &SourceIP, limiter: &State<RateLimiter>| {
+        limit.attempts += 1;
+        if limit.attempts == 3 {
+            limit.timeout = 100; // Start at 1 second
+        } else if limit.attempts > 3 {
+            limit.timeout *= 2;
+        }
+
+        if limit.timeout > 100 * 60 * 5 {
+            // max out at 5 minute
+            limit.timeout = 100 * 60 * 5;
+        }
+
+        {
+            let mut gaurd = limiter.inner().map.lock().unwrap();
+            gaurd.insert(ip.0, limit);
+        }
+    };
+
     // Username exists, fail
     if let Ok(_) = results {
+        update_limit(limit, ip, limiter);
         return Ron::new(RegisterResponse::UsernameTaken);
     }
 
     // Check password security
     let analyzed = analyzer::analyze(&req.password);
     if analyzed.length() < 8 {
+        update_limit(limit, ip, limiter);
         return Ron::new(RegisterResponse::WeakPassword);
     }
     let scored = scorer::score(&analyzed);
     if scored < 80.0 {
+        update_limit(limit, ip, limiter);
         return Ron::new(RegisterResponse::WeakPassword);
     }
 
@@ -68,6 +121,7 @@ pub async fn register(
         .await;
     // Check if user was created successfully
     if let Err(_) = result {
+        update_limit(limit, ip, limiter);
         return Ron::new(RegisterResponse::EmailTaken);
     }
 
@@ -84,7 +138,14 @@ pub async fn register(
     };
     let jwt = AuthToken::new(&claim, &secret.inner().0);
     if let Err(_) = jwt {
+        update_limit(limit, ip, limiter);
         return Ron::new(RegisterResponse::InvalidRequest);
+    }
+
+    // Delete any rate limit on success
+    {
+        let mut guard = limiter.inner().map.lock().unwrap();
+        guard.remove_entry(&ip.0);
     }
     Ron::new(RegisterResponse::Success(jwt.unwrap()))
 }
@@ -93,9 +154,60 @@ pub async fn register(
 pub async fn login(
     secret: &State<SessionSecret>,
     conn: PSQL,
+    ip: &SourceIP,
+    limiter: &State<RateLimiter>,
     req: LoginRequest,
 ) -> Ron<LoginResponse> {
     use crate::schema::users::dsl::*;
+
+    // Rate limit
+    let limit = {
+        let guard = limiter.inner().map.lock().unwrap();
+        let ip = ip.0;
+        let get = guard.get(&ip);
+        if let Some(timeout) = get {
+            timeout.clone()
+        } else {
+            RateLimit {
+                lastattempt: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("Time moved backwards")
+                    .as_millis(),
+                timeout: 0,
+                attempts: 0,
+            }
+        }
+    };
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time moved backwards")
+        .as_millis();
+    let elapsed = now - limit.lastattempt;
+    if elapsed < limit.timeout as u128 {
+        return Ron::new(LoginResponse::LockedOut);
+    }
+
+    // Insert the updated rate limit into the hashmap
+    let update_limit = |mut limit: RateLimit, ip: &SourceIP, limiter: &State<RateLimiter>| {
+        limit.attempts += 1;
+        if limit.attempts == 3 {
+            limit.timeout = 100; // Start at 1 second
+        } else if limit.attempts > 3 {
+            limit.timeout *= 2;
+        }
+
+        if limit.timeout > 100 * 60 * 5 {
+            // max out at 5 minute
+            limit.timeout = 100 * 60 * 5;
+        }
+
+        {
+            let mut gaurd = limiter.inner().map.lock().unwrap();
+            gaurd.insert(ip.0, limit);
+        }
+    };
+
     // Get user from users table
     let name = req.username.clone();
     let results = conn
@@ -114,12 +226,14 @@ pub async fn login(
     let verification = verify_encoded(&my_user.passwordhash, req.password.as_bytes());
 
     if let Err(_) = verification {
+        update_limit(limit, ip, limiter);
         return Ron::new(LoginResponse::InvalidRequest);
     }
 
     let verification = verification.unwrap();
 
     if !verification {
+        update_limit(limit, ip, limiter);
         return Ron::new(LoginResponse::PasswordWrong);
     }
 
@@ -136,6 +250,7 @@ pub async fn login(
     };
     let jwt = AuthToken::new(&claim, &secret.inner().0);
     if let Err(_) = jwt {
+        update_limit(limit, ip, limiter);
         return Ron::new(LoginResponse::InvalidRequest);
     }
     Ron::new(LoginResponse::Success(jwt.unwrap()))
