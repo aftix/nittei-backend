@@ -1,6 +1,6 @@
 use crate::sql::*;
-use crate::util::{Ron, SourceIP};
-use crate::{RateLimit, RateLimiter, SessionSecret, PSQL};
+use crate::util::{rate_limit, update_limit, Ron, SourceIP};
+use crate::{RateLimiter, SessionSecret, PSQL};
 use argon2::{verify_encoded, Config};
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
@@ -20,59 +20,17 @@ pub async fn register(
 ) -> Ron<RegisterResponse> {
     use crate::schema::users::dsl::*;
 
-    // Rate limit
-    let limit = {
-        let guard = limiter.inner().map.lock().unwrap();
-        let ip = ip.0;
-        let get = guard.get(&ip);
-        if let Some(timeout) = get {
-            timeout.clone()
-        } else {
-            RateLimit {
-                lastattempt: SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .expect("Time moved backwards")
-                    .as_millis(),
-                timeout: 0,
-                attempts: 0,
-            }
-        }
-    };
-
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Time moved backwards")
-        .as_millis();
-    let elapsed = now - limit.lastattempt;
-    if elapsed < limit.timeout as u128 {
+    let limit = rate_limit(limiter, ip);
+    if limit == None {
         return Ron::new(RegisterResponse::Lockout);
     }
+    let limit = limit.unwrap();
 
     // Check user availability
     let name = req.username.clone();
     let results = conn
         .run(|c| users.filter(username.eq(name)).load::<User>(c))
         .await;
-
-    // Insert the updated rate limit into the hashmap
-    let update_limit = |mut limit: RateLimit, ip: &SourceIP, limiter: &State<RateLimiter>| {
-        limit.attempts += 1;
-        if limit.attempts == 3 {
-            limit.timeout = 100; // Start at 1 second
-        } else if limit.attempts > 3 {
-            limit.timeout *= 2;
-        }
-
-        if limit.timeout > 100 * 60 * 5 {
-            // max out at 5 minute
-            limit.timeout = 100 * 60 * 5;
-        }
-
-        {
-            let mut gaurd = limiter.inner().map.lock().unwrap();
-            gaurd.insert(ip.0, limit);
-        }
-    };
 
     // Username exists, fail
     if let Ok(_) = results {
@@ -160,53 +118,11 @@ pub async fn login(
 ) -> Ron<LoginResponse> {
     use crate::schema::users::dsl::*;
 
-    // Rate limit
-    let limit = {
-        let guard = limiter.inner().map.lock().unwrap();
-        let ip = ip.0;
-        let get = guard.get(&ip);
-        if let Some(timeout) = get {
-            timeout.clone()
-        } else {
-            RateLimit {
-                lastattempt: SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .expect("Time moved backwards")
-                    .as_millis(),
-                timeout: 0,
-                attempts: 0,
-            }
-        }
-    };
-
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("Time moved backwards")
-        .as_millis();
-    let elapsed = now - limit.lastattempt;
-    if elapsed < limit.timeout as u128 {
+    let limit = rate_limit(limiter, ip);
+    if limit == None {
         return Ron::new(LoginResponse::LockedOut);
     }
-
-    // Insert the updated rate limit into the hashmap
-    let update_limit = |mut limit: RateLimit, ip: &SourceIP, limiter: &State<RateLimiter>| {
-        limit.attempts += 1;
-        if limit.attempts == 3 {
-            limit.timeout = 100; // Start at 1 second
-        } else if limit.attempts > 3 {
-            limit.timeout *= 2;
-        }
-
-        if limit.timeout > 100 * 60 * 5 {
-            // max out at 5 minute
-            limit.timeout = 100 * 60 * 5;
-        }
-
-        {
-            let mut gaurd = limiter.inner().map.lock().unwrap();
-            gaurd.insert(ip.0, limit);
-        }
-    };
+    let limit = limit.unwrap();
 
     // Get user from users table
     let name = req.username.clone();
@@ -216,6 +132,7 @@ pub async fn login(
 
     // Username does not exist
     if let Err(_) = results {
+        update_limit(limit, ip, limiter);
         return Ron::new(LoginResponse::UsernameInvalid);
     }
     // Get the only user from the vec

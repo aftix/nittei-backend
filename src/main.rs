@@ -7,7 +7,7 @@ extern crate diesel;
 
 use rand::{Rng, SeedableRng};
 use std::collections::HashMap;
-use std::net::SocketAddr;
+use std::net::IpAddr;
 use std::sync::Mutex;
 
 // Connection to PostgreSQL
@@ -34,7 +34,7 @@ pub struct RateLimit {
 }
 
 pub struct RateLimiter {
-    pub map: Mutex<HashMap<SocketAddr, RateLimit>>,
+    pub map: Mutex<HashMap<IpAddr, RateLimit>>,
 }
 
 #[launch]
@@ -43,7 +43,7 @@ fn rocket() -> _ {
     let mut rng = rand_chacha::ChaChaRng::from_entropy();
     let secret: SessionSecret = SessionSecret(Rng::gen::<u128>(&mut rng).to_string());
 
-    let map: HashMap<SocketAddr, RateLimit> = HashMap::new();
+    let map: HashMap<IpAddr, RateLimit> = HashMap::new();
     let map = Mutex::new(map);
     let limiter = RateLimiter { map };
 
