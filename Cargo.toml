@@ -7,11 +7,16 @@ edition = "2021"
 
 [dependencies]
 nittei-common={version="0.1", git="https://github.com/aftix/nittei-common"}
-rocket = { version="0.5.0-rc.1", git="https://github.com/SergioBenitez/Rocket"}
-postgres = "0.19"
+rocket = { git="https://github.com/SergioBenitez/Rocket", version="0.5.0-rc.1" }
 toml = "0.5"
 ron="0.7"
 passwords = "3.1"
 totp-lite = "1.0"
 rust-argon2 = "0.8"
 jsonwebtoken = "7.2"
+
+[dependencies.rocket_sync_db_pools]
+version="0.1.0-rc.1"
+git="https://github.com/SergioBenitez/Rocket"
+default-features=false
+features=["diesel_postgres_pool"]

@@ -4,7 +4,7 @@ CREATE TABLE users(
     passwordhash VARCHAR(128) NOT NULL,
     joindate TIMESTAMP NOT NULL,
     donator INT,
-    email VARCHAR(60) NOT NULL,
+    email VARCHAR(60) NOT NULL UNIQUE,
     verified INT
 );
 CREATE TABLE tokens(
