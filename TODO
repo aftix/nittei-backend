@@ -1,7 +1,5 @@
-Make users SQL table
-integrate with Postgres
-Make Postgres accounts
-Load security information from toml
-make hello world in rocket
-Make authorization token table
-use bcrypt
+Make registration
+make session renewal
+make remember me login
+make remember me cancelling
+Rate limiting

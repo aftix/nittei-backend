@@ -32,5 +32,5 @@ fn rocket() -> _ {
     rocket::build()
         .manage(secret)
         .attach(PSQL::fairing())
-        .mount("/", routes![auth::login])
+        .mount("/", routes![auth::login, auth::register])
 }
