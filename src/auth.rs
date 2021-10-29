@@ -170,5 +170,11 @@ pub async fn login(
         update_limit(limit, ip, limiter);
         return Ron::new(LoginResponse::InvalidRequest);
     }
+
+    // Delete any rate limit on success
+    {
+        let mut guard = limiter.inner().map.lock().unwrap();
+        guard.remove_entry(&ip.0);
+    }
     Ron::new(LoginResponse::Success(jwt.unwrap()))
 }
