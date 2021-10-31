@@ -29,8 +29,7 @@ pub async fn register(
     ip_limiter.set_state(limiter.inner());
 
     // Check that email is ok
-    let email_addr = EmailAddress::parse(&req.email, None);
-    if let None = email_addr {
+    if !EmailAddress::is_valid(&req.email, None) {
         return Ron::new(RegisterResponse::InvalidEmail);
     }
 
