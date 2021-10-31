@@ -49,7 +49,7 @@ pub async fn register(
         .await;
 
     // Username exists, fail
-    if let Ok(_) = results {
+    if results.is_ok() {
         return Ron::new(RegisterResponse::UsernameTaken);
     }
 
