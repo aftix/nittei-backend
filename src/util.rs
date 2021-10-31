@@ -54,14 +54,14 @@ impl<'r, 'o> FromRequest<'r> for IPRateLimiter<'o> {
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
         // Get current rate limit from state
         let map = req.rocket().state::<RateLimiter>();
-        if let None = map {
+        if map.is_none() {
             return request::Outcome::Failure((Status::BadRequest, ()));
         }
         let map = map.unwrap();
         let limit = {
             let guard = map.map.lock().unwrap();
             let ip = req.client_ip();
-            if let None = ip {
+            if ip.is_none() {
                 return request::Outcome::Failure((Status::BadRequest, ()));
             }
             let get = guard.get(&ip.unwrap());
@@ -167,7 +167,7 @@ impl<'r> FromRequest<'r> for User {
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
         // Get JWT from Authorization header
         let auth = req.headers().get("Authorization").next();
-        if let None = auth {
+        if auth.is_none() {
             return request::Outcome::Failure((Status::Unauthorized, ()));
         }
         let auth = auth.unwrap();
@@ -184,12 +184,12 @@ impl<'r> FromRequest<'r> for User {
         let jwt = parts[1];
         let token = nittei_common::auth::AuthToken::from_jwt(jwt);
         let secret = req.rocket().state::<SessionSecret>();
-        if let None = secret {
+        if secret.is_none() {
             return request::Outcome::Failure((Status::Unauthorized, ()));
         }
         let secret = secret.unwrap();
         let claim = token.authenticate(&secret.0);
-        if let None = claim {
+        if claim.is_none() {
             return request::Outcome::Failure((Status::Unauthorized, ()));
         }
         let claim = claim.unwrap();
@@ -222,7 +222,7 @@ impl<'r> FromRequest<'r> for Moderator {
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
         // Get JWT from Authorization header
         let auth = req.headers().get("Authorization").next();
-        if let None = auth {
+        if auth.is_none() {
             return request::Outcome::Failure((Status::Unauthorized, ()));
         }
         let auth = auth.unwrap();
@@ -239,12 +239,12 @@ impl<'r> FromRequest<'r> for Moderator {
         let jwt = parts[1];
         let token = nittei_common::auth::AuthToken::from_jwt(jwt);
         let secret = req.rocket().state::<SessionSecret>();
-        if let None = secret {
+        if secret.is_none() {
             return request::Outcome::Failure((Status::Unauthorized, ()));
         }
         let secret = secret.unwrap();
         let claim = token.authenticate(&secret.0);
-        if let None = claim {
+        if claim.is_none() {
             return request::Outcome::Failure((Status::Unauthorized, ()));
         }
         let claim = claim.unwrap();
@@ -282,7 +282,7 @@ impl<'r> FromRequest<'r> for Admin {
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
         // Get JWT from Authorization header
         let auth = req.headers().get("Authorization").next();
-        if let None = auth {
+        if auth.is_none() {
             return request::Outcome::Failure((Status::Unauthorized, ()));
         }
         let auth = auth.unwrap();
@@ -299,12 +299,12 @@ impl<'r> FromRequest<'r> for Admin {
         let jwt = parts[1];
         let token = nittei_common::auth::AuthToken::from_jwt(jwt);
         let secret = req.rocket().state::<SessionSecret>();
-        if let None = secret {
+        if secret.is_none() {
             return request::Outcome::Failure((Status::Unauthorized, ()));
         }
         let secret = secret.unwrap();
         let claim = token.authenticate(&secret.0);
-        if let None = claim {
+        if claim.is_none() {
             return request::Outcome::Failure((Status::Unauthorized, ()));
         }
         let claim = claim.unwrap();

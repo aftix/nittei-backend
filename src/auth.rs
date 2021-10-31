@@ -196,7 +196,7 @@ pub async fn login(
     // Get the only user from the vec, if there is one
     let my_user = results.unwrap();
     let my_user = my_user.iter().next();
-    if let None = my_user {
+    if my_user.is_none() {
         return Ron::new(LoginResponse::UsernameInvalid);
     }
     let my_user = my_user.unwrap();
