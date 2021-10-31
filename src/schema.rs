@@ -25,6 +25,7 @@ table! {
     resetcodes (uid) {
         uid -> Int4,
         codehash -> Varchar,
+        setat -> Timestamp,
     }
 }
 
@@ -64,11 +65,20 @@ table! {
     }
 }
 
+table! {
+    verifycodes (uid) {
+        uid -> Int4,
+        codehash -> Varchar,
+        setat -> Timestamp,
+    }
+}
+
 joinable!(comments -> times (tid));
 joinable!(comments -> users (uid));
 joinable!(resetcodes -> users (uid));
 joinable!(times -> users (uid));
 joinable!(tokens -> users (uid));
+joinable!(verifycodes -> users (uid));
 
 allow_tables_to_appear_in_same_query!(
     blocks,
@@ -78,4 +88,5 @@ allow_tables_to_appear_in_same_query!(
     times,
     tokens,
     users,
+    verifycodes,
 );

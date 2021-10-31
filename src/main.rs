@@ -10,6 +10,8 @@ use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::Mutex;
 
+pub mod consts;
+
 // Connection to PostgreSQL
 #[database("nittei")]
 pub struct PSQL(diesel::PgConnection);

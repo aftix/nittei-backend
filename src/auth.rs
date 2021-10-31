@@ -1,3 +1,4 @@
+use crate::consts;
 use crate::sql::*;
 use crate::util::{IPRateLimiter, Ron};
 use crate::{RateLimiter, SessionSecret, PSQL};
@@ -5,6 +6,8 @@ use argon2::{verify_encoded, Config};
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
 use email_address_parser::EmailAddress;
+use lettre::{SendmailTransport, Transport};
+use lettre_email::EmailBuilder;
 use nittei_common::auth::*;
 use passwords::{analyzer, scorer};
 use rand::{Rng, SeedableRng};
@@ -25,6 +28,7 @@ pub async fn register(
     req: RegisterRequest,
 ) -> Ron<RegisterResponse> {
     use crate::schema::users::dsl::*;
+    use crate::schema::verifycodes::dsl::*;
 
     ip_limiter.set_state(limiter.inner());
 
@@ -76,7 +80,7 @@ pub async fn register(
             now.as_secs() as i64,
             (now.as_nanos() - 1000000000 * now.as_secs() as u128) as u32,
         ),
-        email: req.email,
+        email: req.email.clone(),
     };
 
     let result = conn
@@ -87,9 +91,10 @@ pub async fn register(
         })
         .await;
     // Check if user was created successfully
-    if let Err(_) = result {
+    if result.is_err() {
         return Ron::new(RegisterResponse::EmailTaken);
     }
+    let result = result.unwrap();
 
     // New user success! Make a session key just like on login for QOL
     let now = SystemTime::now();
@@ -99,7 +104,7 @@ pub async fn register(
         .as_secs();
     let claim = Claim {
         exp: now + 5 * 60,
-        sub: req.username,
+        sub: req.username.clone(),
         iat: now,
         auth: nittei_common::auth::AuthLevel::User,
     };
@@ -108,7 +113,54 @@ pub async fn register(
         return Ron::new(RegisterResponse::InvalidRequest);
     }
 
-    // TODO: Email verification
+    // Email verification
+    let verification_code: String = Rng::gen::<u128>(&mut rng).to_string();
+    let email_msg = EmailBuilder::new()
+        .to((&req.email, &req.username))
+        .from(consts::EMAIL_ADDRESS)
+        .subject(consts::EMAIL_SUBJECT)
+        .text(format!(
+            "{}{}/{}/{}",
+            consts::EMAIL_BODY,
+            consts::VERIFY,
+            &req.username,
+            &verification_code
+        ))
+        .build()
+        .unwrap();
+    let mut mailer = SendmailTransport::new();
+    if mailer.send(email_msg.into()).is_err() {
+        error!("Mail failed to send to {}!", &req.email);
+    }
+
+    // Put verification code into table
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_secs();
+    let now = NaiveDateTime::from_timestamp(now as i64, 0);
+
+    let salt: String = Rng::gen::<u128>(&mut rng).to_string();
+    let code_hash =
+        argon2::hash_encoded(&verification_code.as_bytes(), salt.as_bytes(), &config).unwrap();
+
+    let verifycode = VerifyCode {
+        uid: result.uid,
+        codehash: code_hash,
+        setat: now,
+    };
+
+    if conn
+        .run(move |c| {
+            diesel::insert_into(verifycodes)
+                .values(&verifycode)
+                .load::<VerifyCode>(c)
+        })
+        .await
+        .is_err()
+    {
+        error!("Failed entering user verification code into table!");
+    }
 
     ip_limiter.success = true;
     Ron::new(RegisterResponse::Success(jwt.unwrap()))

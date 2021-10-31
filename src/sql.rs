@@ -26,3 +26,13 @@ pub struct NewUser {
     pub joindate: NaiveDateTime,
     pub email: String,
 }
+
+use crate::schema::verifycodes;
+// For inserting and retrieving a new verification code into verifycodes table
+#[derive(Debug, Insertable, Queryable)]
+#[table_name = "verifycodes"]
+pub struct VerifyCode {
+    pub uid: i32,
+    pub codehash: String,
+    pub setat: NaiveDateTime,
+}

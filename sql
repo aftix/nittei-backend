@@ -20,7 +20,14 @@ CREATE TABLE tokens(
 CREATE TABLE resetcodes(
     uid INT NOT NULL PRIMARY KEY,
     codehash VARCHAR(128) NOT NULL,
-    FOREIGN KEY (uid) REFERENCES users (uid);
+    setat TIMESTAMP NOT NULL,
+    FOREIGN KEY (uid) REFERENCES users (uid)
+);
+CREATE TABLE verifycodes(
+    uid INT NOT NULL PRIMARY KEY,
+    codehash VARCHAR(128) NOT NULL,
+    setat TIMESTAMP NOT NULL,
+    FOREIGN KEY (uid) REFERENCES users (uid)
 );
 CREATE TABLE friends(
     uid1 INT NOT NULL PRIMARY KEY,
