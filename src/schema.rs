@@ -60,6 +60,7 @@ table! {
         verified -> Nullable<Int4>,
         postdefault -> Nullable<Int4>,
         uimode -> Nullable<Int4>,
+        authlevel -> Nullable<Int4>,
     }
 }
 

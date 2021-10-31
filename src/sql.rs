@@ -13,6 +13,7 @@ pub struct User {
     pub verified: Option<i32>,
     pub postdefault: Option<i32>,
     pub uimode: Option<i32>,
+    pub authlevel: Option<i32>,
 }
 
 use crate::schema::users;

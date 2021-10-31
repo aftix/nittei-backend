@@ -164,7 +164,7 @@ pub async fn login(
         exp: now + 5 * 60,
         sub: req.username,
         iat: now,
-        auth: nittei_common::auth::AuthLevel::User,
+        auth: nittei_common::auth::AuthLevel::from(my_user.authlevel.unwrap_or(0)),
     };
     let jwt = AuthToken::new(&claim, &secret.inner().0);
     if let Err(_) = jwt {

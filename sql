@@ -7,7 +7,8 @@ CREATE TABLE users(
     email VARCHAR(60) NOT NULL UNIQUE,
     verified INT,
     postdefault INT,
-    uimode INT
+    uimode INT,
+    authlevel INT
 );
 CREATE TABLE tokens(
     uid INT NOT NULL PRIMARY KEY,
