@@ -22,6 +22,7 @@ pub mod sql;
 pub struct SessionSecret(String);
 
 pub mod util;
+use util::CORS;
 
 // API for User Authentication
 pub mod auth;
@@ -51,5 +52,14 @@ fn rocket() -> _ {
         .manage(secret)
         .manage(limiter)
         .attach(PSQL::fairing())
-        .mount("/", routes![auth::login, auth::register])
+        .attach(CORS)
+        .mount(
+            "/",
+            routes![
+                auth::login,
+                auth::login_opt,
+                auth::register,
+                auth::register_opt
+            ],
+        )
 }

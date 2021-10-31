@@ -1,5 +1,5 @@
 use crate::sql::*;
-use crate::util::{rate_limit, update_limit, Ron, SourceIP};
+use crate::util::{IPRateLimiter, Ron};
 use crate::{RateLimiter, SessionSecret, PSQL};
 use argon2::{verify_encoded, Config};
 use chrono::NaiveDateTime;
@@ -10,21 +10,27 @@ use rand::{Rng, SeedableRng};
 use rocket::State;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[options("/auth/register")]
+pub async fn register_opt() -> &'static str {
+    ""
+}
+
 #[post("/auth/register", data = "<req>")]
 pub async fn register(
     secret: &State<SessionSecret>,
     conn: PSQL,
-    ip: &SourceIP,
+    mut ip_limiter: IPRateLimiter<'_>,
     limiter: &State<RateLimiter>,
     req: RegisterRequest,
 ) -> Ron<RegisterResponse> {
     use crate::schema::users::dsl::*;
 
-    let limit = rate_limit(limiter, ip);
-    if limit == None {
-        return Ron::new(RegisterResponse::Lockout);
+    ip_limiter.set_state(limiter.inner());
+
+    // If username is longer than 30 characters, fail
+    if req.username.len() > 30 || req.username.len() == 0 {
+        return Ron::new(RegisterResponse::InvalidUsername);
     }
-    let limit = limit.unwrap();
 
     // Check user availability
     let name = req.username.clone();
@@ -34,19 +40,16 @@ pub async fn register(
 
     // Username exists, fail
     if let Ok(_) = results {
-        update_limit(limit, ip, limiter);
         return Ron::new(RegisterResponse::UsernameTaken);
     }
 
     // Check password security
     let analyzed = analyzer::analyze(&req.password);
     if analyzed.length() < 8 {
-        update_limit(limit, ip, limiter);
         return Ron::new(RegisterResponse::WeakPassword);
     }
     let scored = scorer::score(&analyzed);
     if scored < 80.0 {
-        update_limit(limit, ip, limiter);
         return Ron::new(RegisterResponse::WeakPassword);
     }
 
@@ -79,7 +82,6 @@ pub async fn register(
         .await;
     // Check if user was created successfully
     if let Err(_) = result {
-        update_limit(limit, ip, limiter);
         return Ron::new(RegisterResponse::EmailTaken);
     }
 
@@ -93,36 +95,33 @@ pub async fn register(
         exp: now + 5 * 60,
         sub: req.username,
         iat: now,
+        auth: nittei_common::auth::AuthLevel::User,
     };
     let jwt = AuthToken::new(&claim, &secret.inner().0);
     if let Err(_) = jwt {
-        update_limit(limit, ip, limiter);
         return Ron::new(RegisterResponse::InvalidRequest);
     }
 
-    // Delete any rate limit on success
-    {
-        let mut guard = limiter.inner().map.lock().unwrap();
-        guard.remove_entry(&ip.0);
-    }
+    ip_limiter.success = true;
     Ron::new(RegisterResponse::Success(jwt.unwrap()))
+}
+
+#[options("/auth/login")]
+pub async fn login_opt() -> &'static str {
+    ""
 }
 
 #[post("/auth/login", data = "<req>")]
 pub async fn login(
     secret: &State<SessionSecret>,
     conn: PSQL,
-    ip: &SourceIP,
+    mut ip_limiter: IPRateLimiter<'_>,
     limiter: &State<RateLimiter>,
     req: LoginRequest,
 ) -> Ron<LoginResponse> {
     use crate::schema::users::dsl::*;
 
-    let limit = rate_limit(limiter, ip);
-    if limit == None {
-        return Ron::new(LoginResponse::LockedOut);
-    }
-    let limit = limit.unwrap();
+    ip_limiter.set_state(limiter.inner());
 
     // Get user from users table
     let name = req.username.clone();
@@ -132,25 +131,26 @@ pub async fn login(
 
     // Username does not exist
     if let Err(_) = results {
-        update_limit(limit, ip, limiter);
         return Ron::new(LoginResponse::UsernameInvalid);
     }
-    // Get the only user from the vec
+    // Get the only user from the vec, if there is one
     let my_user = results.unwrap();
-    let my_user = my_user.iter().next().unwrap();
+    let my_user = my_user.iter().next();
+    if let None = my_user {
+        return Ron::new(LoginResponse::UsernameInvalid);
+    }
+    let my_user = my_user.unwrap();
 
     // Verify that password hash matches
     let verification = verify_encoded(&my_user.passwordhash, req.password.as_bytes());
 
     if let Err(_) = verification {
-        update_limit(limit, ip, limiter);
         return Ron::new(LoginResponse::InvalidRequest);
     }
 
     let verification = verification.unwrap();
 
     if !verification {
-        update_limit(limit, ip, limiter);
         return Ron::new(LoginResponse::PasswordWrong);
     }
 
@@ -164,17 +164,13 @@ pub async fn login(
         exp: now + 5 * 60,
         sub: req.username,
         iat: now,
+        auth: nittei_common::auth::AuthLevel::User,
     };
     let jwt = AuthToken::new(&claim, &secret.inner().0);
     if let Err(_) = jwt {
-        update_limit(limit, ip, limiter);
         return Ron::new(LoginResponse::InvalidRequest);
     }
 
-    // Delete any rate limit on success
-    {
-        let mut guard = limiter.inner().map.lock().unwrap();
-        guard.remove_entry(&ip.0);
-    }
+    ip_limiter.success = true;
     Ron::new(LoginResponse::Success(jwt.unwrap()))
 }
