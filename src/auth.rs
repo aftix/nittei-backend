@@ -109,7 +109,7 @@ pub async fn register(
         auth: nittei_common::auth::AuthLevel::User,
     };
     let jwt = AuthToken::new(&claim, &secret.inner().0);
-    if let Err(_) = jwt {
+    if jwt.is_err() {
         return Ron::new(RegisterResponse::InvalidRequest);
     }
 
@@ -190,7 +190,7 @@ pub async fn login(
         .await;
 
     // Username does not exist
-    if let Err(_) = results {
+    if results.is_err() {
         return Ron::new(LoginResponse::UsernameInvalid);
     }
     // Get the only user from the vec, if there is one
@@ -204,7 +204,7 @@ pub async fn login(
     // Verify that password hash matches
     let verification = verify_encoded(&my_user.passwordhash, req.password.as_bytes());
 
-    if let Err(_) = verification {
+    if verification.is_err() {
         return Ron::new(LoginResponse::InvalidRequest);
     }
 
@@ -227,7 +227,7 @@ pub async fn login(
         auth: nittei_common::auth::AuthLevel::from(my_user.authlevel.unwrap_or(0)),
     };
     let jwt = AuthToken::new(&claim, &secret.inner().0);
-    if let Err(_) = jwt {
+    if jwt.is_err() {
         return Ron::new(LoginResponse::InvalidRequest);
     }
 

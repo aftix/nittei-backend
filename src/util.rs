@@ -28,7 +28,7 @@ impl<T: Serialize + Debug> Ron<T> {
 impl<'r, 'o: 'r, T: Serialize + Debug> Responder<'r, 'o> for Ron<T> {
     fn respond_to(self, _req: &'r Request<'_>) -> Result<'o> {
         let text = ron::to_string(&self.inner);
-        if let Err(_) = text {
+        if text.is_err() {
             return Err(Status::UnprocessableEntity);
         }
         let text = text.unwrap();
