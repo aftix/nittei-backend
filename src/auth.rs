@@ -4,6 +4,7 @@ use crate::{RateLimiter, SessionSecret, PSQL};
 use argon2::{verify_encoded, Config};
 use chrono::NaiveDateTime;
 use diesel::prelude::*;
+use email_address_parser::EmailAddress;
 use nittei_common::auth::*;
 use passwords::{analyzer, scorer};
 use rand::{Rng, SeedableRng};
@@ -26,6 +27,12 @@ pub async fn register(
     use crate::schema::users::dsl::*;
 
     ip_limiter.set_state(limiter.inner());
+
+    // Check that email is ok
+    let email_addr = EmailAddress::parse(&req.email, None);
+    if let None = email_addr {
+        return Ron::new(RegisterResponse::InvalidEmail);
+    }
 
     // If username is longer than 30 characters, fail
     if req.username.len() > 30 || req.username.len() == 0 {
@@ -101,6 +108,8 @@ pub async fn register(
     if let Err(_) = jwt {
         return Ron::new(RegisterResponse::InvalidRequest);
     }
+
+    // TODO: Email verification
 
     ip_limiter.success = true;
     Ron::new(RegisterResponse::Success(jwt.unwrap()))

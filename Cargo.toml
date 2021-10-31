@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-nittei-common={version="0.1.10", git="https://github.com/aftix/nittei-common", features=["guards"]}
+nittei-common={version="0.1.11", git="https://github.com/aftix/nittei-common", features=["guards"]}
 rocket = { git="https://github.com/SergioBenitez/Rocket", version="0.5.0-rc.1" }
 toml = "~0.5"
 ron="~0.7"
@@ -19,6 +19,7 @@ rand = "~0.8"
 serde = {version="~1.0", features=["derive"]}
 diesel = {version="~1.4", features=["postgres", "chrono"]}
 chrono = "~0.4"
+email-address-parser = "~1.0"
 
 [dependencies.rocket_sync_db_pools]
 version="0.1.0-rc.1"
