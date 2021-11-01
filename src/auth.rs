@@ -302,3 +302,96 @@ pub async fn renew_user(secret: &State<SessionSecret>, user: User) -> Ron<RenewR
 
     Ron::new(RenewResponse::Success(jwt.unwrap()))
 }
+
+#[options("/auth/persist_request")]
+pub async fn persist_req_opt() -> &'static str {
+    ""
+}
+
+#[post("/auth/persist_request", data = "<req>")]
+pub async fn persist_req(
+    http_user: User,
+    conn: PSQL,
+    mut ip_limiter: IPRateLimiter<'_>,
+    limiter: &State<RateLimiter>,
+    req: PersistRequest,
+) -> Ron<PersistResponse> {
+    use crate::schema::tokens::dsl::*;
+    use crate::schema::users::dsl::*;
+
+    ip_limiter.set_state(limiter.inner());
+
+    if http_user.username != req.username {
+        return Ron::new(PersistResponse::InvalidRequest);
+    }
+
+    // Get user from users table
+    let name = req.username.clone();
+    let results = conn
+        .run(|c| users.filter(username.eq(name)).load::<SQLUser>(c))
+        .await;
+
+    // Username does not exist
+    if results.is_err() {
+        return Ron::new(PersistResponse::InvalidUser);
+    }
+    // Get the only user from the vec, if there is one
+    let my_user = results.unwrap();
+    let my_user = my_user.iter().next();
+    if my_user.is_none() {
+        return Ron::new(PersistResponse::InvalidUser);
+    }
+    let my_user = my_user.unwrap();
+
+    // Verify that password hash matches
+    let verification = verify_encoded(&my_user.passwordhash, req.password.as_bytes());
+
+    if verification.is_err() {
+        return Ron::new(PersistResponse::InvalidRequest);
+    }
+
+    let verification = verification.unwrap();
+
+    if !verification {
+        return Ron::new(PersistResponse::InvalidPassword);
+    }
+
+    // Create a new random salt
+    let mut rng = rand_chacha::ChaChaRng::from_entropy();
+    let salt: String = Rng::gen::<u128>(&mut rng).to_string();
+    let config = Config::default();
+
+    // Create a new PersistToken
+    let token = PersistToken {
+        session: Rng::gen::<u64>(&mut rng),
+        token: Rng::gen::<u64>(&mut rng),
+    };
+    let hash = argon2::hash_encoded(token.token.to_string().as_bytes(), salt.as_bytes(), &config);
+    if hash.is_err() {
+        return Ron::new(PersistResponse::InvalidRequest);
+    }
+
+    let token_ins = NewToken {
+        uid: my_user.uid,
+        session: token.session.to_string(),
+        tokenhash: hash.unwrap(),
+        expires: None,
+    };
+
+    if conn
+        .run(move |c| {
+            diesel::insert_into(tokens)
+                .values(&token_ins)
+                .load::<Token>(c)
+        })
+        .await
+        .is_err()
+    {
+        return Ron::new(PersistResponse::InvalidRequest);
+    }
+
+    println!("Inserted");
+
+    ip_limiter.success = true;
+    Ron::new(PersistResponse::Success(token))
+}

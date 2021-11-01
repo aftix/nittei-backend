@@ -36,3 +36,24 @@ pub struct VerifyCode {
     pub codehash: String,
     pub setat: NaiveDateTime,
 }
+
+use crate::schema::tokens;
+// For querying tokens
+#[derive(Debug, Queryable)]
+pub struct Token {
+    pub uid: i32,
+    pub session: String,
+    pub tokenhash: String,
+    pub expires: Option<NaiveDateTime>,
+    pub tid: i32,
+}
+
+// For inserting a new persistent login token into tokens table
+#[derive(Debug, Insertable)]
+#[table_name = "tokens"]
+pub struct NewToken {
+    pub uid: i32,
+    pub session: String,
+    pub tokenhash: String,
+    pub expires: Option<NaiveDateTime>,
+}

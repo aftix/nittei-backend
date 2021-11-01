@@ -42,11 +42,12 @@ table! {
 }
 
 table! {
-    tokens (uid) {
+    tokens (tid) {
         uid -> Int4,
         session -> Varchar,
         tokenhash -> Varchar,
         expires -> Nullable<Timestamp>,
+        tid -> Int4,
     }
 }
 
