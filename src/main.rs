@@ -61,7 +61,11 @@ fn rocket() -> _ {
                 auth::login,
                 auth::login_opt,
                 auth::register,
-                auth::register_opt
+                auth::register_opt,
+                auth::renew_opt,
+                auth::renew_admin,
+                auth::renew_mod,
+                auth::renew_user,
             ],
         )
 }

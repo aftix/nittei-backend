@@ -3,7 +3,7 @@ use diesel::Queryable;
 
 // User table row
 #[derive(Debug, Queryable)]
-pub struct User {
+pub struct SQLUser {
     pub uid: i32,
     pub username: String,
     pub passwordhash: String,

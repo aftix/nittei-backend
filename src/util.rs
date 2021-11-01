@@ -151,7 +151,11 @@ impl Fairing for CORS {
 
     async fn on_response<'r>(&self, _: &'r Request<'_>, resp: &mut Response<'r>) {
         resp.set_raw_header("Access-Control-Allow-Origin", "*");
-        resp.set_raw_header("Access-Control-Allow-Headers", "Content-Type");
+        resp.set_raw_header(
+            "Access-Control-Allow-Headers",
+            "Content-Type, Authorization",
+        );
+        resp.set_raw_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
     }
 }
 
@@ -166,7 +170,7 @@ impl<'r> FromRequest<'r> for User {
 
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
         // Get JWT from Authorization header
-        let auth = req.headers().get("Authorization").next();
+        let auth = req.headers().get_one("Authorization");
         if auth.is_none() {
             return request::Outcome::Failure((Status::Unauthorized, ()));
         }
@@ -194,15 +198,7 @@ impl<'r> FromRequest<'r> for User {
         }
         let claim = claim.unwrap();
 
-        // Make sure token hasn't expired
-        let now = SystemTime::now();
-        let timestamp = now
-            .duration_since(UNIX_EPOCH)
-            .expect("Time moved backwards")
-            .as_secs();
-        if timestamp > claim.exp {
-            return request::Outcome::Failure((Status::Unauthorized, ()));
-        }
+        // exp field automatically checked by jsonwebtoken
 
         request::Outcome::Success(User {
             username: claim.sub,
@@ -221,7 +217,7 @@ impl<'r> FromRequest<'r> for Moderator {
 
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
         // Get JWT from Authorization header
-        let auth = req.headers().get("Authorization").next();
+        let auth = req.headers().get_one("Authorization");
         if auth.is_none() {
             return request::Outcome::Failure((Status::Unauthorized, ()));
         }
@@ -249,15 +245,7 @@ impl<'r> FromRequest<'r> for Moderator {
         }
         let claim = claim.unwrap();
 
-        // Make sure token hasn't expired
-        let now = SystemTime::now();
-        let timestamp = now
-            .duration_since(UNIX_EPOCH)
-            .expect("Time moved backwards")
-            .as_secs();
-        if timestamp > claim.exp {
-            return request::Outcome::Failure((Status::Unauthorized, ()));
-        }
+        // exp field automatically checked by jsonwebtoken
 
         // If user isn't a moderator or admin, forward
         if claim.auth == nittei_common::auth::AuthLevel::User {
@@ -281,8 +269,9 @@ impl<'r> FromRequest<'r> for Admin {
 
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
         // Get JWT from Authorization header
-        let auth = req.headers().get("Authorization").next();
+        let auth = req.headers().get_one("Authorization");
         if auth.is_none() {
+            println!("No header");
             return request::Outcome::Failure((Status::Unauthorized, ()));
         }
         let auth = auth.unwrap();
@@ -300,24 +289,18 @@ impl<'r> FromRequest<'r> for Admin {
         let token = nittei_common::auth::AuthToken::from_jwt(jwt);
         let secret = req.rocket().state::<SessionSecret>();
         if secret.is_none() {
+            println!("No secret");
             return request::Outcome::Failure((Status::Unauthorized, ()));
         }
         let secret = secret.unwrap();
         let claim = token.authenticate(&secret.0);
         if claim.is_none() {
+            println!("bad claim");
             return request::Outcome::Failure((Status::Unauthorized, ()));
         }
         let claim = claim.unwrap();
 
-        // Make sure token hasn't expired
-        let now = SystemTime::now();
-        let timestamp = now
-            .duration_since(UNIX_EPOCH)
-            .expect("Time moved backwards")
-            .as_secs();
-        if timestamp > claim.exp {
-            return request::Outcome::Failure((Status::Unauthorized, ()));
-        }
+        // exp field automatically checked by jsonwebtoken
 
         // If user isn't a admin, forward
         if claim.auth == nittei_common::auth::AuthLevel::User

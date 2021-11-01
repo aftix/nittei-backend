@@ -1,6 +1,6 @@
 use crate::consts;
 use crate::sql::*;
-use crate::util::{IPRateLimiter, Ron};
+use crate::util::{Admin, IPRateLimiter, Moderator, Ron, User};
 use crate::{RateLimiter, SessionSecret, PSQL};
 use argon2::{verify_encoded, Config};
 use chrono::NaiveDateTime;
@@ -45,11 +45,11 @@ pub async fn register(
     // Check user availability
     let name = req.username.clone();
     let results = conn
-        .run(|c| users.filter(username.eq(name)).load::<User>(c))
+        .run(|c| users.filter(username.eq(name)).load::<SQLUser>(c))
         .await;
 
     // Username exists, fail
-    if results.is_ok() {
+    if results.is_ok() && results.unwrap().len() != 0 {
         return Ron::new(RegisterResponse::UsernameTaken);
     }
 
@@ -59,7 +59,7 @@ pub async fn register(
         return Ron::new(RegisterResponse::WeakPassword);
     }
     let scored = scorer::score(&analyzed);
-    if scored < 80.0 {
+    if scored < 70.0 {
         return Ron::new(RegisterResponse::WeakPassword);
     }
 
@@ -87,7 +87,7 @@ pub async fn register(
         .run(move |c| {
             diesel::insert_into(users)
                 .values(&new_user)
-                .get_result::<User>(c)
+                .get_result::<SQLUser>(c)
         })
         .await;
     // Check if user was created successfully
@@ -163,7 +163,7 @@ pub async fn register(
     }
 
     ip_limiter.success = true;
-    Ron::new(RegisterResponse::Success(jwt.unwrap()))
+    Ron::new(RegisterResponse::Success(jwt.unwrap(), claim))
 }
 
 #[options("/auth/login")]
@@ -186,7 +186,7 @@ pub async fn login(
     // Get user from users table
     let name = req.username.clone();
     let results = conn
-        .run(|c| users.filter(username.eq(name)).load::<User>(c))
+        .run(|c| users.filter(username.eq(name)).load::<SQLUser>(c))
         .await;
 
     // Username does not exist
@@ -232,5 +232,73 @@ pub async fn login(
     }
 
     ip_limiter.success = true;
-    Ron::new(LoginResponse::Success(jwt.unwrap()))
+    Ron::new(LoginResponse::Success(jwt.unwrap(), claim))
+}
+
+#[options("/auth/renew")]
+pub async fn renew_opt() -> &'static str {
+    ""
+}
+
+#[get("/auth/renew")]
+pub async fn renew_admin(secret: &State<SessionSecret>, admin: Admin) -> Ron<RenewResponse> {
+    // Request guard verifies we have an admin. Make a new claim for an admin session.
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time moved backwards")
+        .as_secs();
+    let claim = Claim {
+        exp: now + 5 * 60,
+        sub: admin.username,
+        iat: now,
+        auth: nittei_common::auth::AuthLevel::Admin,
+    };
+    let jwt = AuthToken::new(&claim, &secret.inner().0);
+    if jwt.is_err() {
+        return Ron::new(RenewResponse::InvalidRequest);
+    }
+
+    Ron::new(RenewResponse::Success(jwt.unwrap()))
+}
+
+#[get("/auth/renew", rank = 2)]
+pub async fn renew_mod(secret: &State<SessionSecret>, moderator: Moderator) -> Ron<RenewResponse> {
+    // Request guard verifies we have an admin. Make a new claim for an admin session.
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time moved backwards")
+        .as_secs();
+    let claim = Claim {
+        exp: now + 5 * 60,
+        sub: moderator.username,
+        iat: now,
+        auth: nittei_common::auth::AuthLevel::Mod,
+    };
+    let jwt = AuthToken::new(&claim, &secret.inner().0);
+    if jwt.is_err() {
+        return Ron::new(RenewResponse::InvalidRequest);
+    }
+
+    Ron::new(RenewResponse::Success(jwt.unwrap()))
+}
+
+#[get("/auth/renew", rank = 3)]
+pub async fn renew_user(secret: &State<SessionSecret>, user: User) -> Ron<RenewResponse> {
+    // Request guard verifies we have an admin. Make a new claim for an admin session.
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time moved backwards")
+        .as_secs();
+    let claim = Claim {
+        exp: now + 5 * 60,
+        sub: user.username,
+        iat: now,
+        auth: nittei_common::auth::AuthLevel::User,
+    };
+    let jwt = AuthToken::new(&claim, &secret.inner().0);
+    if jwt.is_err() {
+        return Ron::new(RenewResponse::InvalidRequest);
+    }
+
+    Ron::new(RenewResponse::Success(jwt.unwrap()))
 }
