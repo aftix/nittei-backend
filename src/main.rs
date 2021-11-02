@@ -68,6 +68,8 @@ fn rocket() -> _ {
                 auth::renew_user,
                 auth::persist_req_opt,
                 auth::persist_req,
+                auth::persist_login_opt,
+                auth::persist_login,
             ],
         )
 }

@@ -395,3 +395,80 @@ pub async fn persist_req(
     ip_limiter.success = true;
     Ron::new(PersistResponse::Success(token))
 }
+
+#[options("/auth/persist_login")]
+pub async fn persist_login_opt() -> &'static str {
+    ""
+}
+
+#[post("/auth/persist_login", data = "<req>")]
+pub async fn persist_login(
+    secret: &State<SessionSecret>,
+    conn: PSQL,
+    mut ip_limiter: IPRateLimiter<'_>,
+    limiter: &State<RateLimiter>,
+    req: PersistLoginRequest,
+) -> Ron<PersistLoginResponse> {
+    use crate::schema::tokens::dsl::*;
+    use crate::schema::users::dsl::*;
+
+    ip_limiter.set_state(limiter.inner());
+
+    // Get the right session for the given token
+    let my_session = req.token.session.to_string();
+    let my_username = req.username.clone();
+    let my_tokens = conn
+        .run(move |c| {
+            tokens
+                .inner_join(users)
+                .filter(username.eq(my_username).and(session.eq(my_session)))
+                .load::<(Token, SQLUser)>(c)
+        })
+        .await;
+
+    if my_tokens.is_err() {
+        return Ron::new(PersistLoginResponse::InvalidSession);
+    }
+    let my_tokens = my_tokens.unwrap();
+    if my_tokens.len() != 1 {
+        return Ron::new(PersistLoginResponse::InvalidSession);
+    }
+
+    // Verify the token, session is good
+    let verification = verify_encoded(
+        &my_tokens[0].0.tokenhash,
+        req.token.token.to_string().as_bytes(),
+    );
+
+    if verification.is_err() || !verification.unwrap() {
+        // Token is wrong, delete the remember me token
+        let res = conn
+            .run(move |c| diesel::delete(tokens.filter(tid.eq(my_tokens[0].0.tid))).execute(c))
+            .await;
+        if res.is_ok() {
+            return Ron::new(PersistLoginResponse::InvalidToken);
+        } else {
+            return Ron::new(PersistLoginResponse::Lockout);
+        }
+    }
+
+    // Token is verified! Make JWT
+    let now = SystemTime::now();
+    let now: u64 = now
+        .duration_since(UNIX_EPOCH)
+        .expect("Shouldn't happen! Time went backwards!")
+        .as_secs();
+    let claim = Claim {
+        exp: now + 5 * 60,
+        sub: req.username,
+        iat: now,
+        auth: nittei_common::auth::AuthLevel::from(my_tokens[0].1.authlevel.unwrap_or(0)),
+    };
+    let jwt = AuthToken::new(&claim, &secret.inner().0);
+    if jwt.is_err() {
+        return Ron::new(PersistLoginResponse::Lockout);
+    }
+
+    ip_limiter.success = true;
+    Ron::new(PersistLoginResponse::Success(jwt.unwrap(), claim))
+}
