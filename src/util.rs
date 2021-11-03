@@ -110,10 +110,10 @@ impl<'r> Drop for IPRateLimiter<'r> {
 
         // On failure increase attempt number
         self.limit.attempts += 1;
-        if self.limit.attempts == 3 {
-            self.limit.timeout = 100; // Start at 1 second
-        } else if self.limit.attempts > 3 {
-            self.limit.timeout *= 2;
+        match self.limit.attempts {
+            3 => self.limit.timeout = 100,
+            d if d > 3 => self.limit.timeout *= 2,
+            _ => {}
         }
 
         if self.limit.timeout > 100 * 60 * 5 {
@@ -176,7 +176,7 @@ impl<'r> FromRequest<'r> for User {
         }
         let auth = auth.unwrap();
 
-        let parts: Vec<&str> = auth.split(" ").collect();
+        let parts: Vec<&str> = auth.split(' ').collect();
         if parts.len() != 2 {
             return request::Outcome::Failure((Status::BadRequest, ()));
         }
@@ -223,7 +223,7 @@ impl<'r> FromRequest<'r> for Moderator {
         }
         let auth = auth.unwrap();
 
-        let parts: Vec<&str> = auth.split(" ").collect();
+        let parts: Vec<&str> = auth.split(' ').collect();
         if parts.len() != 2 {
             return request::Outcome::Failure((Status::BadRequest, ()));
         }
@@ -276,7 +276,7 @@ impl<'r> FromRequest<'r> for Admin {
         }
         let auth = auth.unwrap();
 
-        let parts: Vec<&str> = auth.split(" ").collect();
+        let parts: Vec<&str> = auth.split(' ').collect();
         if parts.len() != 2 {
             return request::Outcome::Failure((Status::BadRequest, ()));
         }

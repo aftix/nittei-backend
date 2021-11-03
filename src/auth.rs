@@ -38,7 +38,7 @@ pub async fn register(
     }
 
     // If username is longer than 30 characters, fail
-    if req.username.len() > 30 || req.username.len() == 0 {
+    if req.username.len() > 30 || req.username.is_empty() {
         return Ron::new(RegisterResponse::InvalidUsername);
     }
 
@@ -49,7 +49,7 @@ pub async fn register(
         .await;
 
     // Username exists, fail
-    if results.is_ok() && results.unwrap().len() != 0 {
+    if results.is_ok() && !results.unwrap().is_empty() {
         return Ron::new(RegisterResponse::UsernameTaken);
     }
 
@@ -142,7 +142,7 @@ pub async fn register(
 
     let salt: String = Rng::gen::<u128>(&mut rng).to_string();
     let code_hash =
-        argon2::hash_encoded(&verification_code.as_bytes(), salt.as_bytes(), &config).unwrap();
+        argon2::hash_encoded(verification_code.as_bytes(), salt.as_bytes(), &config).unwrap();
 
     let verifycode = VerifyCode {
         uid: result.uid,
@@ -150,15 +150,14 @@ pub async fn register(
         setat: now,
     };
 
-    if conn
+    let res = conn
         .run(move |c| {
             diesel::insert_into(verifycodes)
                 .values(&verifycode)
                 .load::<VerifyCode>(c)
         })
-        .await
-        .is_err()
-    {
+        .await;
+    if res.is_err() {
         error!("Failed entering user verification code into table!");
     }
 
@@ -195,7 +194,7 @@ pub async fn login(
     }
     // Get the only user from the vec, if there is one
     let my_user = results.unwrap();
-    let my_user = my_user.iter().next();
+    let my_user = my_user.get(0);
     if my_user.is_none() {
         return Ron::new(LoginResponse::UsernameInvalid);
     }
@@ -337,7 +336,7 @@ pub async fn persist_req(
     }
     // Get the only user from the vec, if there is one
     let my_user = results.unwrap();
-    let my_user = my_user.iter().next();
+    let my_user = my_user.get(0);
     if my_user.is_none() {
         return Ron::new(PersistResponse::InvalidUser);
     }
@@ -378,19 +377,16 @@ pub async fn persist_req(
         expires: None,
     };
 
-    if conn
+    let res = conn
         .run(move |c| {
             diesel::insert_into(tokens)
                 .values(&token_ins)
                 .load::<Token>(c)
         })
-        .await
-        .is_err()
-    {
+        .await;
+    if res.is_err() {
         return Ron::new(PersistResponse::InvalidRequest);
     }
-
-    println!("Inserted");
 
     ip_limiter.success = true;
     Ron::new(PersistResponse::Success(token))
