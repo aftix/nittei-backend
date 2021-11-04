@@ -183,9 +183,9 @@ pub async fn login(
     ip_limiter.set_state(limiter.inner());
 
     // Get user from users table
-    let name = req.username.clone();
+    let name = req.email.clone();
     let results = conn
-        .run(|c| users.filter(username.eq(name)).load::<SQLUser>(c))
+        .run(|c| users.filter(email.eq(name)).load::<SQLUser>(c))
         .await;
 
     // Username does not exist
@@ -221,7 +221,7 @@ pub async fn login(
         .as_secs();
     let claim = Claim {
         exp: now + 5 * 60,
-        sub: req.username,
+        sub: my_user.username.clone(),
         iat: now,
         auth: nittei_common::auth::AuthLevel::from(my_user.authlevel.unwrap_or(0)),
     };
@@ -412,12 +412,12 @@ pub async fn persist_login(
 
     // Get the right session for the given token
     let my_session = req.token.session.to_string();
-    let my_username = req.username.clone();
+    let my_email = req.email.clone();
     let my_tokens = conn
         .run(move |c| {
             tokens
                 .inner_join(users)
-                .filter(username.eq(my_username).and(session.eq(my_session)))
+                .filter(email.eq(my_email).and(session.eq(my_session)))
                 .load::<(Token, SQLUser)>(c)
         })
         .await;
@@ -456,7 +456,7 @@ pub async fn persist_login(
         .as_secs();
     let claim = Claim {
         exp: now + 5 * 60,
-        sub: req.username,
+        sub: my_tokens[0].1.email.clone(),
         iat: now,
         auth: nittei_common::auth::AuthLevel::from(my_tokens[0].1.authlevel.unwrap_or(0)),
     };
