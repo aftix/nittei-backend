@@ -104,7 +104,8 @@ pub async fn register(
         .as_secs();
     let claim = Claim {
         exp: now + 5 * 60,
-        sub: req.username.clone(),
+        sub: req.email.clone(),
+        user: result.username.clone(),
         iat: now,
         auth: nittei_common::auth::AuthLevel::User,
     };
@@ -221,7 +222,8 @@ pub async fn login(
         .as_secs();
     let claim = Claim {
         exp: now + 5 * 60,
-        sub: my_user.username.clone(),
+        sub: my_user.email.clone(),
+        user: my_user.username.clone(),
         iat: now,
         auth: nittei_common::auth::AuthLevel::from(my_user.authlevel.unwrap_or(0)),
     };
@@ -248,7 +250,8 @@ pub async fn renew_admin(secret: &State<SessionSecret>, admin: Admin) -> Ron<Ren
         .as_secs();
     let claim = Claim {
         exp: now + 5 * 60,
-        sub: admin.username,
+        sub: admin.email,
+        user: admin.username,
         iat: now,
         auth: nittei_common::auth::AuthLevel::Admin,
     };
@@ -269,7 +272,8 @@ pub async fn renew_mod(secret: &State<SessionSecret>, moderator: Moderator) -> R
         .as_secs();
     let claim = Claim {
         exp: now + 5 * 60,
-        sub: moderator.username,
+        sub: moderator.email,
+        user: moderator.username,
         iat: now,
         auth: nittei_common::auth::AuthLevel::Mod,
     };
@@ -290,7 +294,8 @@ pub async fn renew_user(secret: &State<SessionSecret>, user: User) -> Ron<RenewR
         .as_secs();
     let claim = Claim {
         exp: now + 5 * 60,
-        sub: user.username,
+        sub: user.email,
+        user: user.username,
         iat: now,
         auth: nittei_common::auth::AuthLevel::User,
     };
@@ -320,14 +325,14 @@ pub async fn persist_req(
 
     ip_limiter.set_state(limiter.inner());
 
-    if http_user.username != req.username {
+    if http_user.email != req.email {
         return Ron::new(PersistResponse::InvalidRequest);
     }
 
     // Get user from users table
-    let name = req.username.clone();
+    let name = req.email.clone();
     let results = conn
-        .run(|c| users.filter(username.eq(name)).load::<SQLUser>(c))
+        .run(|c| users.filter(email.eq(name)).load::<SQLUser>(c))
         .await;
 
     // Username does not exist
@@ -457,6 +462,7 @@ pub async fn persist_login(
     let claim = Claim {
         exp: now + 5 * 60,
         sub: my_tokens[0].1.email.clone(),
+        user: my_tokens[0].1.username.clone(),
         iat: now,
         auth: nittei_common::auth::AuthLevel::from(my_tokens[0].1.authlevel.unwrap_or(0)),
     };

@@ -162,6 +162,7 @@ impl Fairing for CORS {
 // Request guard for verifying user
 pub struct User {
     pub username: String,
+    pub email: String,
 }
 
 #[rocket::async_trait]
@@ -201,7 +202,8 @@ impl<'r> FromRequest<'r> for User {
         // exp field automatically checked by jsonwebtoken
 
         request::Outcome::Success(User {
-            username: claim.sub,
+            email: claim.sub,
+            username: claim.user,
         })
     }
 }
@@ -209,6 +211,7 @@ impl<'r> FromRequest<'r> for User {
 // Request guard for verifying moderator
 pub struct Moderator {
     pub username: String,
+    pub email: String,
 }
 
 #[rocket::async_trait]
@@ -253,7 +256,8 @@ impl<'r> FromRequest<'r> for Moderator {
         }
 
         request::Outcome::Success(Moderator {
-            username: claim.sub,
+            email: claim.sub,
+            username: claim.user,
         })
     }
 }
@@ -261,6 +265,7 @@ impl<'r> FromRequest<'r> for Moderator {
 // Request guard for verifying admin
 pub struct Admin {
     pub username: String,
+    pub email: String,
 }
 
 #[rocket::async_trait]
@@ -310,7 +315,8 @@ impl<'r> FromRequest<'r> for Admin {
         }
 
         request::Outcome::Success(Admin {
-            username: claim.sub,
+            email: claim.sub,
+            username: claim.user,
         })
     }
 }
