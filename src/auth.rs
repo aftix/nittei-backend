@@ -190,13 +190,13 @@ pub async fn login(
 
     // Username does not exist
     if results.is_err() {
-        return Ron::new(LoginResponse::UsernameInvalid);
+        return Ron::new(LoginResponse::EmailInvalid);
     }
     // Get the only user from the vec, if there is one
     let my_user = results.unwrap();
     let my_user = my_user.get(0);
     if my_user.is_none() {
-        return Ron::new(LoginResponse::UsernameInvalid);
+        return Ron::new(LoginResponse::EmailInvalid);
     }
     let my_user = my_user.unwrap();
 
